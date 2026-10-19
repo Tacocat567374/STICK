@@ -14,6 +14,8 @@ const MAX_RUN = 360;
 const AIR_ACCEL = 3000;
 const AIR_DRAG = 5;
 const MAX_VX = 1000;
+const MAX_HIT_VX = 700;
+const MAX_HIT_VY = 900;
 const BOSS_SCALE = 1.8;
 const RAGDOLL_LINKS = [
   ['head', 'chest'],
@@ -123,6 +125,8 @@ export class Fighter {
     this.ammo = 0;
     this.cooldown = 0;
     this.attackAnim = 0;
+    this.attackLock = false;
+    this.mustReleaseAttack = false;
     this.hurtT = 0;
     this.spawnT = 0.7;
     this.coyote = 0;
@@ -222,7 +226,22 @@ export class Fighter {
     if (this.onGround && Math.abs(this.vx) > 26) this.runPhase += Math.abs(this.vx) * dt * 0.06;
     else this.runPhase += dt * 2;
 
-    if (input.attack && this.cooldown <= 0) this.startAttack(world);
+    // Melee and automatic weapons may be held down. Semi-automatic guns fire
+    // once per press, rather than emptying a whole magazine while the mouse is
+    // held. Releasing attack also re-arms the input after a weapon runs dry.
+    if (!input.attack) {
+      this.attackLock = false;
+      this.mustReleaseAttack = false;
+    }
+    const attackWeapon = WEAPONS[this.weapon] || WEAPONS.fists;
+    if (input.attack && this.cooldown <= 0 && !this.mustReleaseAttack) {
+      if (attackWeapon.kind === 'melee' || attackWeapon.auto) {
+        this.startAttack(world);
+      } else if (!this.attackLock) {
+        this.attackLock = true;
+        this.startAttack(world);
+      }
+    }
 
     this.throwCd = Math.max(0, this.throwCd - dt);
     if (input.throw && !this.throwLock && this.weapon !== 'fists' && this.throwCd <= 0) {
@@ -320,7 +339,10 @@ export class Fighter {
       }
       this.ammo -= 1;
       this.shoot(w, world);
-      if (this.ammo <= 0) this.weapon = 'fists';
+      if (this.ammo <= 0) {
+        this.weapon = 'fists';
+        this.mustReleaseAttack = true;
+      }
     }
   }
 
@@ -372,7 +394,10 @@ export class Fighter {
     const pose = skeletonPose(this);
     const ox = pose.handR.x;
     const oy = pose.handR.y;
-    world.fx('swing', ox, oy, this.color, this.aim);
+    world.fx('swing', ox, oy, this.color);
+    const nx = Math.cos(this.aim);
+    const ny = Math.sin(this.aim);
+    const targets = [];
     for (const other of world.fighters) {
       if (other === this || !other.alive || other.spawnT > 0) continue;
       const dx = other.x - pose.chest.x;
@@ -383,9 +408,14 @@ export class Fighter {
       let diff = Math.abs(ang - this.aim);
       while (diff > Math.PI) diff = Math.abs(diff - Math.PI * 2);
       if (diff > w.arc / 2 + 0.25) continue;
-      const nx = Math.cos(this.aim);
-      const ny = Math.sin(this.aim);
-      other.takeHit(w.dmg * this.scale, nx, ny, w.knock * this.scale, this, world);
+      targets.push({ fighter: other, dist });
+    }
+    // Most weapons hit one opponent per swing. Wide-sweep weapons can clip a
+    // second target, rewarding spacing without making every swing hit a crowd.
+    targets.sort((a, b) => a.dist - b.dist);
+    const maxTargets = ['scythe', 'nunchaku'].includes(weaponId) ? 2 : 1;
+    for (const target of targets.slice(0, maxTargets)) {
+      target.fighter.takeHit(w.dmg * this.scale, nx, ny, w.knock * this.scale, this, world);
     }
   }
 
@@ -394,12 +424,16 @@ export class Fighter {
     this.hp -= dmg;
     this.hurtT = 0.28;
     const k = knock / this.scale;
-    this.vx += nx * k;
-    this.vy += ny * k * 0.7 - 90;
+    // Hit strength still distinguishes light and heavy weapons, but stacked hits
+    // cannot keep accelerating a fighter into uncontrollable, screen-wide launches.
+    this.vx = Math.max(-MAX_HIT_VX, Math.min(MAX_HIT_VX, this.vx + nx * k * 0.72));
+    this.vy = Math.max(-MAX_HIT_VY, Math.min(MAX_HIT_VY, this.vy + ny * k * 0.42 - Math.min(135, 55 + k * 0.06)));
     if (this.onGround) this.onGround = false;
     world.fx('blood', this.x, this.y, this.color);
-    world.shake(knock * 0.02 + 4);
-    if (this.hp > 0 && Math.random() < 0.14 && this.weapon !== 'fists') {
+    world.shake(Math.min(11, knock * 0.008 + 2));
+    // Only a strong hit has a small chance to disarm; ordinary taps no longer
+    // randomly strip a player's weapon and turn a duel into pickup chaos.
+    if (this.hp > 0 && knock >= 620 && Math.random() < 0.07 && this.weapon !== 'fists') {
       world.dropWeapon(this.x, this.y - 6, this.weapon);
       this.weapon = 'fists';
       this.ammo = 0;
@@ -421,7 +455,7 @@ export class Fighter {
     if (this.weapon !== 'fists') world.dropWeapon(this.x, this.y - 10, this.weapon);
     if (this.scale > 1) world.dropBoss(this.x, this.y - 10);
     world.fx('blood', this.x, this.y, this.color, 1.6);
-    world.shake(silent ? 4 : 18);
+    world.shake(silent ? 3 : 10);
     world.onDeath(this, attacker || null);
   }
 }

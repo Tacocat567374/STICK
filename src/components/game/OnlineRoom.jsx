@@ -19,6 +19,7 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
   const [hud, setHud] = useState(null);
   const [copied, setCopied] = useState(false);
   const [myPing, setMyPing] = useState(null);
+  const [roomNotice, setRoomNotice] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -38,23 +39,34 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
   }, []);
 
   useEffect(() => {
-    let connId = sessionStorage.getItem('arenaConnId');
-    if (!connId) {
-      connId =
-        (typeof crypto !== 'undefined' && crypto.randomUUID && crypto.randomUUID()) ||
-        `c${Date.now()}${Math.floor(Math.random() * 1000)}`;
-      sessionStorage.setItem('arenaConnId', connId);
+    let cancelled = false;
+    let room = null;
+    let sub = null;
+    let connectionTimer = null;
+    // Use a fresh ID per mounted room connection. sessionStorage can be copied
+    // into a second tab, which made two tabs appear as one player to the actor.
+    const connId =
+      (typeof crypto !== 'undefined' && crypto.randomUUID && crypto.randomUUID()) ||
+      `c${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+    try {
+      room = base44.actors.StickArena(roomId).connect({ id: connId });
+      roomRef.current = room;
+    } catch {
+      setRoomNotice('Could not open the multiplayer connection. Check that the StickArena actor is deployed in this Base44 app, then try again.');
+      return () => { cancelled = true; };
     }
-    const room = base44.actors.StickArena(roomId).connect({ id: connId });
-    roomRef.current = room;
 
-    const sub = room.subscribe((msg) => {
+    sub = room.subscribe((msg) => {
       if (!msg || !msg.type) return;
       if (msg.type === 'you') {
         meRef.current = { seat: msg.seat, host: msg.host };
         setMe({ seat: msg.seat, host: msg.host });
         room.send({ type: 'hello', name: nameRef.current, color: (msg.seat - 1) % PALETTE.length });
       } else if (msg.type === 'players') {
+        if (connectionTimer) {
+          clearTimeout(connectionTimer);
+          connectionTimer = null;
+        }
         playersRef.current = msg.players;
         setPlayers(msg.players);
         setPhase(msg.phase);
@@ -81,6 +93,8 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
         if (guestRef.current) guestRef.current.onSnapshot(msg.data);
       } else if (msg.type === 'event') {
         if (guestRef.current) guestRef.current.onEvent(msg.data);
+      } else if (msg.type === 'error') {
+        setRoomNotice(String(msg.message || 'The room could not complete that action.'));
       } else if (msg.type === 'pong') {
         const rtt = Math.max(1, Math.round(performance.now() - msg.t));
         setMyPing(rtt);
@@ -88,9 +102,17 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
       }
     });
 
+    connectionTimer = setTimeout(() => {
+      if (!cancelled && playersRef.current.length === 0) {
+        setRoomNotice('Still connecting to the multiplayer room. This app must be published (Publish button at the top of the editor) for the StickArena actor runtime to go live. If already published, the actor may not be deployed or may be linked to a different Base44 app.');
+      }
+    }, 9000);
+
     return () => {
+      cancelled = true;
+      if (connectionTimer) clearTimeout(connectionTimer);
       if (sub && typeof sub.unsubscribe === 'function') sub.unsubscribe();
-      room.close();
+      if (room) room.close();
       roomRef.current = null;
     };
   }, [roomId]);
@@ -153,11 +175,19 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
 
   const startMatch = () => {
     if (!roomRef.current) return;
+    setRoomNotice('');
     roomRef.current.send({ type: 'start' });
+  };
+
+  const startWithBot = () => {
+    if (!roomRef.current) return;
+    setRoomNotice('');
+    roomRef.current.send({ type: 'startWithBot' });
   };
 
   const setBots = (n) => {
     if (!roomRef.current) return;
+    setRoomNotice('');
     roomRef.current.send({ type: 'bots', count: n });
   };
 
@@ -209,6 +239,12 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
             </span>
           </button>
 
+          {roomNotice && (
+            <div role="status" className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-foreground">
+              {roomNotice}
+            </div>
+          )}
+
           <div className="mt-5 flex flex-col gap-2">
             {players.length === 0 && (
               <div className="rounded-xl border border-dashed border-white/12 px-4 py-6 text-center text-sm text-muted-foreground">
@@ -253,15 +289,18 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
           {me.host ? (
             <div className="mt-6">
               <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
-                Fill empty slots with bots
+                Add practice bots (optional)
               </div>
               <div className="mt-2 grid grid-cols-4 gap-2">
                 {[0, 1, 2, 3].map((n) => {
                   const active = players.filter((p) => p.bot).length === n;
+                  const label = n === 0 ? 'No bots' : n === 1 ? '1 bot' : `${n} bots`;
                   return (
                     <button
                       key={n}
                       type="button"
+                      aria-label={`Set ${label}`}
+                      title={label}
                       onClick={() => setBots(n)}
                       className={`rounded-xl border px-3 py-2.5 font-display text-base transition ${
                         active
@@ -269,19 +308,36 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
                           : 'border-white/10 bg-white/5 text-foreground hover:border-primary/60 hover:text-primary'
                       }`}
                     >
-                      {n}
+                      <span className="block">{n}</span>
+                      <span className="block text-[9px] font-sans font-semibold uppercase tracking-wider opacity-70">
+                        {n === 0 ? 'none' : n === 1 ? 'bot' : 'bots'}
+                      </span>
                     </button>
                   );
                 })}
               </div>
-              <button
-                type="button"
-                disabled={players.length < 2}
-                onClick={startMatch}
-                className="mt-5 w-full rounded-full bg-primary px-8 py-3.5 font-display text-sm uppercase tracking-widest text-primary-foreground transition hover:brightness-110 disabled:opacity-40"
-              >
-                {players.length < 2 ? 'Need one more fighter' : 'Start the match'}
-              </button>
+              {players.length < 2 ? (
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    To wait for a friend, share the invite code above. Or test the arena now with a bot.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={startWithBot}
+                    className="mt-3 w-full rounded-full bg-primary px-8 py-3.5 font-display text-sm uppercase tracking-widest text-primary-foreground transition hover:brightness-110"
+                  >
+                    Start with 1 Bot
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startMatch}
+                  className="mt-5 w-full rounded-full bg-primary px-8 py-3.5 font-display text-sm uppercase tracking-widest text-primary-foreground transition hover:brightness-110"
+                >
+                  Start Match ({players.length} fighters)
+                </button>
+              )}
             </div>
           ) : (
             <div className="mt-6 rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-center text-sm text-muted-foreground">
