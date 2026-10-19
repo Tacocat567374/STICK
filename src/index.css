@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 250 34% 6%;
+    --foreground: 60 22% 96%;
+    --card: 250 26% 11%;
+    --card-foreground: 60 22% 96%;
+    --popover: 250 28% 10%;
+    --popover-foreground: 60 22% 96%;
+    --primary: 82 92% 56%;
+    --primary-foreground: 250 46% 8%;
+    --secondary: 250 20% 18%;
+    --secondary-foreground: 60 22% 96%;
+    --muted: 250 18% 16%;
+    --muted-foreground: 250 14% 68%;
+    --accent: 12 95% 62%;
+    --accent-foreground: 250 46% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 250 20% 22%;
+    --input: 250 20% 22%;
+    --ring: 82 92% 56%;
+    --chart-1: 82 92% 56%;
+    --chart-2: 12 95% 62%;
+    --chart-3: 190 90% 62%;
+    --chart-4: 45 95% 62%;
+    --chart-5: 280 85% 68%;
+    --radius: 0.85rem;
+    --font-heading: 'Archivo Black', ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Archivo Black', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --sidebar-background: 250 28% 9%;
+    --sidebar-foreground: 250 12% 88%;
+    --sidebar-primary: 82 92% 56%;
+    --sidebar-primary-foreground: 250 46% 8%;
+    --sidebar-accent: 250 20% 16%;
+    --sidebar-accent-foreground: 60 22% 96%;
+    --sidebar-border: 250 20% 20%;
+    --sidebar-ring: 82 92% 56%;
+  }
+
+  .dark {
+    --background: 250 34% 6%;
+    --foreground: 60 22% 96%;
+    --card: 250 26% 11%;
+    --card-foreground: 60 22% 96%;
+    --popover: 250 28% 10%;
+    --popover-foreground: 60 22% 96%;
+    --primary: 82 92% 56%;
+    --primary-foreground: 250 46% 8%;
+    --secondary: 250 20% 18%;
+    --secondary-foreground: 60 22% 96%;
+    --muted: 250 18% 16%;
+    --muted-foreground: 250 14% 68%;
+    --accent: 12 95% 62%;
+    --accent-foreground: 250 46% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 250 20% 22%;
+    --input: 250 20% 22%;
+    --ring: 82 92% 56%;
+    --chart-1: 82 92% 56%;
+    --chart-2: 12 95% 62%;
+    --chart-3: 190 90% 62%;
+    --chart-4: 45 95% 62%;
+    --chart-5: 280 85% 68%;
+    --sidebar-background: 250 28% 9%;
+    --sidebar-foreground: 250 12% 88%;
+    --sidebar-primary: 82 92% 56%;
+    --sidebar-primary-foreground: 250 46% 8%;
+    --sidebar-accent: 250 20% 16%;
+    --sidebar-accent-foreground: 60 22% 96%;
+    --sidebar-border: 250 20% 20%;
+    --sidebar-ring: 82 92% 56%;
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+  }
+}
+
+/* Push44 – Permanently hide Base44 branding badge */
+#base44-edit-badge, #base44-badge, .base44-badge, div[id*='base44'], [data-base44-badge], .made-with-base44, [class*='base44'], #admin-footer {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

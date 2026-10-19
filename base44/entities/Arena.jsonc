@@ -1,0 +1,36 @@
+{
+  "name": "Arena",
+  "type": "object",
+  "properties": {
+    "room_name": {
+      "type": "string"
+    },
+    "host_name": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "public",
+        "private"
+      ],
+      "default": "public"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "playing",
+        "closed"
+      ],
+      "default": "open"
+    },
+    "player_count": {
+      "type": "number",
+      "default": 1
+    }
+  },
+  "required": [
+    "room_name"
+  ]
+}
