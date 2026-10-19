@@ -49,6 +49,13 @@ export default function GameCanvas({
       inputRef.current.right = !!(keys.d || keys.arrowright);
       inputRef.current.jump = !!(keys.w || keys.arrowup || keys[' ']);
     };
+    const onBlur = () => {
+      Object.keys(keys).forEach((key) => { keys[key] = false; });
+      inputRef.current.attack = false;
+      inputRef.current.throw = false;
+      mouseRef.current.has = false;
+      sync();
+    };
     const onKeyDown = (e) => {
       const k = e.key.toLowerCase();
       if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' '].includes(k)) e.preventDefault();
@@ -91,6 +98,7 @@ export default function GameCanvas({
     if (interactive) {
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
+      window.addEventListener('blur', onBlur);
       canvas.addEventListener('mousemove', onMove);
       canvas.addEventListener('mousedown', onDown);
       window.addEventListener('mouseup', onUp);
@@ -137,6 +145,7 @@ export default function GameCanvas({
       ro.disconnect();
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
       window.removeEventListener('mouseup', onUp);
       canvas.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('mousedown', onDown);

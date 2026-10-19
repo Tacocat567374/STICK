@@ -10,6 +10,10 @@ export default class StickArena extends Actor {
   nextSeat = 1;
   phase = 'lobby';
 
+  // Base44's Actor base class requires a tick handler even though this room
+  // relays snapshots and does not run its own server-side simulation loop.
+  handleTick() {}
+
   async handleStart() {
     const savedUsers = await this.storage.get('users');
     if (savedUsers) this.users = new Map(savedUsers);
@@ -69,8 +73,14 @@ export default class StickArena extends Actor {
 
   async handleConnect(conn) {
     if (!this.users.has(conn.id) && this.users.size >= MAX_USERS) {
-      conn.reject(4001, 'room full');
-      return;
+      // Bots are placeholders. A real player joining a bot-filled room replaces
+      // one instead of being locked out by the host's fill-slots choice.
+      const botId = [...this.users.keys()].find((id) => id.startsWith('bot-'));
+      if (botId) this.users.delete(botId);
+      else {
+        conn.reject(4001, 'room full');
+        return;
+      }
     }
     if (!this.users.has(conn.id)) {
       const seat = this.nextSeat++;
@@ -110,20 +120,27 @@ export default class StickArena extends Actor {
     const isHost = this.hostSeat() === u.seat;
 
     if (msg.type === 'input') {
+      // Clients normally send at 20 Hz. A small server-side rate guard prevents
+      // accidental or malicious floods from starving other room messages.
+      const now = Date.now();
+      if (u.lastInputAt && now - u.lastInputAt < 24) return;
+      u.lastInputAt = now;
       const host = this.hostConn();
       if (host && host.id !== conn.id) {
-        const k = msg.keys || {};
+        const k = msg.keys && typeof msg.keys === 'object' ? msg.keys : {};
+        const rawAim = Number(msg.aim);
+        const aim = Number.isFinite(rawAim) ? Math.max(-Math.PI, Math.min(Math.PI, rawAim)) : 0;
         host.send({
           type: 'input',
           seat: u.seat,
           keys: {
-            l: k.l ? 1 : 0,
-            r: k.r ? 1 : 0,
-            j: k.j ? 1 : 0,
-            a: k.a ? 1 : 0,
-            t: k.t ? 1 : 0,
+            l: k.l === true || k.l === 1 ? 1 : 0,
+            r: k.r === true || k.r === 1 ? 1 : 0,
+            j: k.j === true || k.j === 1 ? 1 : 0,
+            a: k.a === true || k.a === 1 ? 1 : 0,
+            t: k.t === true || k.t === 1 ? 1 : 0,
           },
-          aim: Number(msg.aim) || 0,
+          aim,
         });
       }
       return;
@@ -136,7 +153,39 @@ export default class StickArena extends Actor {
       return;
     }
 
-    if (msg.type === 'start' && isHost) {
+    if (msg.type === 'start') {
+      if (!isHost) {
+        conn.send({ type: 'error', code: 'host_only', message: 'Only the host can start this match.' });
+        return;
+      }
+      if (this.users.size < 2) {
+        conn.send({ type: 'error', code: 'need_fighters', message: 'Invite a friend, add a bot, or choose Start with a Bot.' });
+        return;
+      }
+      this.phase = 'playing';
+      await this.storage.put('phase', this.phase);
+      this.broadcastPlayers();
+      return;
+    }
+
+    // Explicit one-click solo practice path. Keeping this separate from the
+    // regular start message prevents a host from accidentally filling an
+    // online lobby with a bot when they meant to wait for a friend.
+    if (msg.type === 'startWithBot') {
+      if (!isHost) {
+        conn.send({ type: 'error', code: 'host_only', message: 'Only the host can start this match.' });
+        return;
+      }
+      if (this.users.size < 2) {
+        const seat = this.nextSeat++;
+        this.users.set(`bot-${seat}`, {
+          seat,
+          name: 'Bot 1',
+          color: (seat - 1) % COLORS,
+          bot: true,
+        });
+        await this.saveUsers();
+      }
       this.phase = 'playing';
       await this.storage.put('phase', this.phase);
       this.broadcastPlayers();

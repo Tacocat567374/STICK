@@ -1,148 +1,70 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
-import { appParams } from '@/lib/app-params';
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useContext, useMemo } from "react";
+import { base44 } from "@/api/base44Client";
+import { currentUrl } from "@/lib/authReturnTo";
 
-const AuthContext = createContext();
-
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
-  const [authError, setAuthError] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
-
-  useEffect(() => {
-    checkAppState();
-  }, []);
-
-  const checkAppState = async () => {
+/**
+ * The visitor, resolved once per page load and cached in the router's QueryClient:
+ * the login gate (src/components/auth/AuthGate.jsx) reads it with
+ * `context.queryClient.ensureQueryData(authQuery)`, components with `useAuth()`.
+ * Resolves to `{ user, error }`: an anonymous visitor (no token, or a 401/403) is `{ user: null, error: null }`.
+ * Anything else, an outage (429, 503) or a request that never got an answer, rejects instead,
+ * so it is never cached as "signed out" and the next read asks again.
+ */
+export const authQuery = queryOptions({
+  queryKey: ["auth", "me"],
+  queryFn: async () => {
+    // No token means no session; /me could only answer 401.
+    if (!base44.auth.hasToken()) return { user: null, error: null };
     try {
-      setIsLoadingPublicSettings(true);
-      setAuthError(null);
-      
-      try {
-        const publicSettings = await base44.app.getPublicSettings();
-        setAppPublicSettings(publicSettings);
-        
-        // If we got the app public settings successfully, check if user is authenticated
-        if (appParams.token) {
-          await checkUserAuth();
-        } else {
-          setIsLoadingAuth(false);
-          setIsAuthenticated(false);
-          setAuthChecked(true);
-        }
-        setIsLoadingPublicSettings(false);
-      } catch (appError) {
-        console.error('App state check failed:', appError);
-        
-        // Handle app-level errors
-        if (appError.status === 403 && appError.data?.extra_data?.reason) {
-          const reason = appError.data.extra_data.reason;
-          if (reason === 'auth_required') {
-            setAuthError({
-              type: 'auth_required',
-              message: 'Authentication required'
-            });
-          } else if (reason === 'user_not_registered') {
-            setAuthError({
-              type: 'user_not_registered',
-              message: 'User not registered for this app'
-            });
-          } else {
-            setAuthError({
-              type: reason,
-              message: appError.message
-            });
-          }
-        } else {
-          setAuthError({
-            type: 'unknown',
-            message: appError.message || 'Failed to load app'
-          });
-        }
-        setIsLoadingPublicSettings(false);
-        setIsLoadingAuth(false);
+      return { user: await base44.auth.me(), error: null };
+    } catch (err) {
+      if (err?.data?.extra_data?.reason === "user_not_registered") {
+        return { user: null, error: { type: "user_not_registered", message: "Not registered" } };
       }
-    } catch (error) {
-      console.error('Unexpected error:', error);
-      setAuthError({
-        type: 'unknown',
-        message: error.message || 'An unexpected error occurred'
-      });
-      setIsLoadingPublicSettings(false);
-      setIsLoadingAuth(false);
+      if (err?.status === 401 || err?.status === 403) return { user: null, error: null };
+      throw err;
     }
-  };
+  },
+  staleTime: Infinity,
+  retry: false,
+});
 
-  const checkUserAuth = async () => {
-    try {
-      // Now check if the user is authenticated
-      setIsLoadingAuth(true);
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
-      setIsAuthenticated(true);
-      setIsLoadingAuth(false);
-      setAuthChecked(true);
-    } catch (error) {
-      console.error('User auth check failed:', error);
-      setIsLoadingAuth(false);
-      setIsAuthenticated(false);
-      setAuthChecked(true);
-      
-      // If user auth fails, it might be an expired token
-      if (error.status === 401 || error.status === 403) {
-        setAuthError({
-          type: 'auth_required',
-          message: 'Authentication required'
-        });
-      }
-    }
-  };
+const AuthContext = createContext(null);
 
-  const logout = (shouldRedirect = true) => {
-    setUser(null);
-    setIsAuthenticated(false);
-    
-    if (shouldRedirect) {
-      // Use the SDK's logout method which handles token cleanup and redirect
-      base44.auth.logout(window.location.href);
-    } else {
-      // Just remove the token without redirect
-      base44.auth.logout();
-    }
-  };
+/**
+ * Client-side session state. The server renders every page anonymously and the
+ * query only runs in the browser after hydration, so the first client render
+ * matches the server markup. Gate user-specific UI on `isLoadingAuth`.
+ */
+export function AuthProvider({ children }) {
+  const queryClient = useQueryClient();
+  const { data, error, isPending } = useQuery(authQuery);
 
-  const navigateToLogin = () => {
-    // Use the SDK's redirectToLogin method
-    base44.auth.redirectToLogin(window.location.href);
-  };
-
-  return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated, 
-      isLoadingAuth,
-      isLoadingPublicSettings,
-      authError,
-      appPublicSettings,
-      authChecked,
-      logout,
-      navigateToLogin,
-      checkUserAuth,
-      checkAppState
-    }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user: data?.user ?? null,
+      isAuthenticated: !!data?.user,
+      isLoadingAuth: isPending,
+      authError: data?.error ?? (error ? { type: "unknown", message: error.message ?? "Failed to load session" } : null),
+      refresh: () => queryClient.fetchQuery({ ...authQuery, staleTime: 0 }),
+      logout: () => {
+        queryClient.setQueryData(authQuery.queryKey, { user: null, error: null });
+        base44.auth.logout(window.location.origin);
+      },
+      // Full-page sign-in: /login with the current page as the way back. A hard
+      // navigation on purpose — on an app served behind the platform login the
+      // platform answers /login itself; an app with its own auth pages serves its /login route.
+      navigateToLogin: () => base44.auth.redirectToLogin(currentUrl()),
+    }),
+    [data, error, isPending, queryClient],
   );
-};
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
+  return ctx;
+}

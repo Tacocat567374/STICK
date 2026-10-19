@@ -15,9 +15,12 @@ export function makeRagdoll(pose, links, impulse) {
   for (const n of names) {
     const p = pose[n];
     const pt = makePoint(p.x, p.y);
-    // carry the death impulse into the previous position so it moves
-    pt.px = p.x - (impulse.x * (0.6 + Math.random() * 0.7)) / 3;
-    pt.py = p.y - (impulse.y * (0.6 + Math.random() * 0.7)) / 3;
+    // Fighter impulses are expressed in pixels/second, while Verlet velocity is
+    // represented by the distance between this and the previous fixed step.
+    // Converting by 1/60 avoids launching body parts hundreds of pixels per frame.
+    const variance = 0.85 + Math.random() * 0.3;
+    pt.px = p.x - (impulse.x * variance) / 60;
+    pt.py = p.y - (impulse.y * variance) / 60;
     pts[n] = pt;
   }
   const idx = {};

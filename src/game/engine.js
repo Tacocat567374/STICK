@@ -1,5 +1,5 @@
 import { getArena } from './arenas';
-import { Fighter } from './fighter';
+import { BODY_H, BODY_W, Fighter } from './fighter';
 import { botInput } from './ai';
 import { WEAPONS, pickDrop } from './weapons';
 import { stepRagdoll } from './physics';
@@ -28,8 +28,8 @@ export class Game {
     this.hitstop = 0;
     this.time = 0;
     this.round = 0;
-    this.crateT = 4;
-    this.bossCrateT = 16;
+    this.crateT = 6.5;
+    this.bossCrateT = 32;
     this.acc = 0;
     this.winner = null;
     this.flash = null;
@@ -53,7 +53,8 @@ export class Game {
     this.crates = [];
     this.thrown = [];
     this.particles = [];
-    this.crateT = 3;
+    this.crateT = 6.5;
+    if (this.bossCrateT <= 0) this.bossCrateT = 30 + Math.random() * 6;
     this.state = 'countdown';
     this.timer = 3;
     this.emit({ type: 'roundStart', round: this.round, arenaIndex: this.arenaIndex });
@@ -75,7 +76,7 @@ export class Game {
       });
       return;
     }
-    const n = type === 'swing' ? 3 : type === 'blood' ? 7 : type === 'dust' ? 5 : 3;
+    const n = type === 'swing' ? 3 : type === 'blood' ? 4 : type === 'dust' ? 4 : 3;
     const quick = type === 'swing';
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -95,7 +96,7 @@ export class Game {
         type: 'chip',
       });
     }
-    if (this.particles.length > 320) this.particles.splice(0, this.particles.length - 320);
+    if (this.particles.length > 220) this.particles.splice(0, this.particles.length - 220);
     if (this.fxOut.length < 24) this.fxOut.push({ x, y, c: color || '#ffffff', s: 2.6 * scale });
   }
 
@@ -112,6 +113,9 @@ export class Game {
   spawnBullet(b) {
     b.life = 2.4;
     this.bullets.push(b);
+    // Safety cap keeps rapid-fire weapons from overwhelming slower devices or
+    // producing huge network snapshots in an eight-player room.
+    if (this.bullets.length > 160) this.bullets.splice(0, this.bullets.length - 160);
   }
 
   spawnThrown(t) {
@@ -204,7 +208,7 @@ export class Game {
       this.crateT -= dt;
       if (this.crateT <= 0 && this.crates.length < 4) {
         this.dropWeapon(140 + Math.random() * (this.arena.width - 280), -60, pickDrop());
-        this.crateT = 5 + Math.random() * 4;
+        this.crateT = 8 + Math.random() * 3;
       }
       this.bossCrateT -= dt;
       if (
@@ -213,7 +217,7 @@ export class Game {
         !this.fighters.some((f) => f.alive && f.scale > 1)
       ) {
         this.dropBoss(140 + Math.random() * (this.arena.width - 280), -60);
-        this.bossCrateT = 22 + Math.random() * 8;
+        this.bossCrateT = 30 + Math.random() * 6;
       }
       this.simulate(dt, false);
       const alive = this.fighters.filter((f) => f.alive);
@@ -254,20 +258,60 @@ export class Game {
     this.updateCrates(dt);
     this.updateThrown(dt);
     this.updateParticles(dt);
+    this.solveFighterCollisions();
     for (const f of this.fighters) {
       if (f.doll) stepRagdoll(f.doll, this.arena.platforms, this.arena.killY);
+    }
+  }
+
+  solveFighterCollisions() {
+    // Gentle body blocking stops fighters from walking through each other.
+    // The low-strength response keeps this from becoming a pinball pile-up.
+    const live = this.fighters.filter((f) => f.alive && f.spawnT <= 0);
+    for (let i = 0; i < live.length; i++) {
+      const a = live[i];
+      for (let j = i + 1; j < live.length; j++) {
+        const b = live[j];
+        const sa = a.scale || 1;
+        const sb = b.scale || 1;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const overlapX = ((BODY_W * sa) + (BODY_W * sb)) * 0.5 - Math.abs(dx);
+        const overlapY = ((BODY_H * sa) + (BODY_H * sb)) * 0.5 - Math.abs(dy);
+        if (overlapX <= 0 || overlapY <= 8) continue;
+        const dir = Math.abs(dx) < 0.001 ? (String(a.id) < String(b.id) ? 1 : -1) : Math.sign(dx);
+        const push = Math.min(22, overlapX * 0.5 + 0.2);
+        a.x -= dir * push;
+        b.x += dir * push;
+        if (a.vx * dir > 0) a.vx *= 0.72;
+        if (b.vx * dir < 0) b.vx *= 0.72;
+        a.x = Math.max(10, Math.min(this.arena.width - 10, a.x));
+        b.x = Math.max(10, Math.min(this.arena.width - 10, b.x));
+      }
     }
   }
 
   updateBullets(dt) {
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i];
+      const fromX = b.x;
+      const fromY = b.y;
       b.vy += 340 * dt;
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
+      const dx = b.vx * dt;
+      const dy = b.vy * dt;
       b.life -= dt;
-      let gone = b.life <= 0 || b.y > this.arena.killY;
-      if (!gone) {
+      let gone = b.life <= 0;
+      // Sweep fast projectiles along their path so a high-speed shot does not
+      // skip through a thin fighter or platform between fixed simulation steps.
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 12));
+      for (let step = 1; step <= steps && !gone; step++) {
+        const t = step / steps;
+        b.x = fromX + dx * t;
+        b.y = fromY + dy * t;
+        if (b.y > this.arena.killY) {
+          gone = true;
+          break;
+        }
         for (const p of this.arena.platforms) {
           if (b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
             this.fx('spark', b.x, b.y, '#ffe9a8', 0.7);
@@ -275,11 +319,10 @@ export class Game {
             break;
           }
         }
-      }
-      if (!gone) {
+        if (gone) break;
         for (const f of this.fighters) {
           if (!f.alive || f.id === b.owner || f.spawnT > 0) continue;
-          if (Math.abs(f.x - b.x) < 16 && Math.abs(f.y - b.y) < 25) {
+          if (Math.abs(f.x - b.x) < BODY_W * (f.scale || 1) * 0.65 && Math.abs(f.y - b.y) < BODY_H * (f.scale || 1) * 0.5) {
             const m = Math.hypot(b.vx, b.vy) || 1;
             const owner = this.fighters.find((o) => o.id === b.owner) || null;
             f.takeHit(b.dmg, b.vx / m, b.vy / m, b.knock, owner, this);
@@ -289,6 +332,10 @@ export class Game {
         }
       }
       if (gone) this.bullets.splice(i, 1);
+      else {
+        b.x = fromX + dx;
+        b.y = fromY + dy;
+      }
     }
   }
 
