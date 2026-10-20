@@ -379,6 +379,129 @@ export const WEAPONS = {
     auto: true,
     color: '#6fe8ff',
   },
+  trident: {
+    id: 'trident',
+    name: 'Trident',
+    kind: 'melee',
+    dmg: 26,
+    cd: 0.68,
+    range: 96,
+    knock: 520,
+    arc: 0.5,
+    color: '#c9a7ff',
+  },
+  glaive: {
+    id: 'glaive',
+    name: 'Glaive',
+    kind: 'melee',
+    dmg: 21,
+    cd: 0.6,
+    range: 90,
+    knock: 380,
+    arc: 1.3,
+    color: '#b8ff3d',
+  },
+  whip: {
+    id: 'whip',
+    name: 'Whip',
+    kind: 'melee',
+    dmg: 8,
+    cd: 0.2,
+    range: 112,
+    knock: 140,
+    arc: 1.8,
+    color: '#8b6f47',
+  },
+  flail: {
+    id: 'flail',
+    name: 'Flail',
+    kind: 'melee',
+    dmg: 25,
+    cd: 0.9,
+    range: 74,
+    knock: 950,
+    arc: 1.2,
+    color: '#9aa0b4',
+  },
+  chainsaw: {
+    id: 'chainsaw',
+    name: 'Saw',
+    kind: 'melee',
+    dmg: 12,
+    cd: 0.12,
+    range: 54,
+    knock: 120,
+    arc: 1.2,
+    color: '#ff8a5c',
+  },
+  cutlass: {
+    id: 'cutlass',
+    name: 'Cutlass',
+    kind: 'melee',
+    dmg: 24,
+    cd: 0.5,
+    range: 76,
+    knock: 340,
+    arc: 1.05,
+    color: '#ffd166',
+  },
+  shuriken: {
+    id: 'shuriken',
+    name: 'Shuriken',
+    kind: 'gun',
+    dmg: 9,
+    cd: 0.26,
+    speed: 1150,
+    ammo: 12,
+    knock: 60,
+    spread: 0.02,
+    pellets: 1,
+    auto: false,
+    color: '#dfe9ff',
+  },
+  railgun: {
+    id: 'railgun',
+    name: 'Rail',
+    kind: 'gun',
+    dmg: 58,
+    cd: 1.5,
+    speed: 3600,
+    ammo: 3,
+    knock: 300,
+    spread: 0.002,
+    pellets: 1,
+    auto: false,
+    pierce: true,
+    color: '#6fe8ff',
+  },
+  akimbo: {
+    id: 'akimbo',
+    name: 'Akimbo',
+    kind: 'gun',
+    dmg: 11,
+    cd: 0.15,
+    speed: 1500,
+    ammo: 20,
+    knock: 90,
+    spread: 0.06,
+    pellets: 2,
+    auto: true,
+    color: '#ffd166',
+  },
+  cannon: {
+    id: 'cannon',
+    name: 'Cannon',
+    kind: 'gun',
+    dmg: 46,
+    cd: 1.3,
+    speed: 1000,
+    ammo: 3,
+    knock: 700,
+    spread: 0.03,
+    pellets: 1,
+    auto: false,
+    color: '#ff5d73',
+  },
 };
 
 export const DROP_WEAPONS = [
@@ -386,6 +509,8 @@ export const DROP_WEAPONS = [
   'katana', 'axe', 'dagger', 'scythe', 'club', 'claws',
   'smg', 'pistol', 'shotgun', 'rifle', 'minigun', 'flamethrower', 'rocket', 'grenadelauncher',
   'revolver', 'lmg', 'crossbow', 'plasma', 'sniper', 'blunderbuss', 'needlegun', 'tesla',
+  'trident', 'glaive', 'whip', 'flail', 'chainsaw', 'cutlass',
+  'shuriken', 'railgun', 'akimbo', 'cannon',
 ];
 
 export function pickDrop() {
@@ -508,6 +633,36 @@ export function drawWeapon(ctx, weaponId, hx, hy, angle, facing) {
         ctx.arc(16 + i * 4, -2 + (i % 2) * 4, 2, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (weaponId === 'shuriken') {
+      ctx.fillStyle = w.color;
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9);
+        ctx.lineTo(Math.cos(a + 0.7) * 3, Math.sin(a + 0.7) * 3);
+      }
+      ctx.fill();
+    } else if (weaponId === 'railgun') {
+      ctx.fillRect(-14, -4, 46, 8);
+      ctx.fillStyle = w.color;
+      ctx.fillRect(0, -2, 16, 4);
+      ctx.fillStyle = '#20202b';
+      ctx.fillRect(-10, 4, 10, 8);
+    } else if (weaponId === 'akimbo') {
+      ctx.fillRect(-4, -3, 18, 6);
+      ctx.fillRect(-4, 5, 18, 6);
+      ctx.fillStyle = w.color;
+      ctx.fillRect(1, -2, 5, 4);
+      ctx.fillRect(1, 6, 5, 4);
+    } else if (weaponId === 'cannon') {
+      ctx.fillRect(-10, -8, 38, 16);
+      ctx.fillStyle = w.color;
+      ctx.fillRect(26, -8, 6, 16);
+      ctx.fillStyle = '#20202b';
+      ctx.beginPath();
+      ctx.arc(-14, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
     } else {
       ctx.fillRect(-4, -3, 18, 6);
       ctx.fillRect(-2, 2, 6, 8);
@@ -584,6 +739,95 @@ export function drawWeapon(ctx, weaponId, hx, hy, angle, facing) {
       ctx.lineTo(16, -6 + i * 5);
       ctx.stroke();
     }
+  } else if (weaponId === 'trident') {
+    ctx.strokeStyle = '#c98b4b';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0);
+    ctx.lineTo(40, 0);
+    ctx.stroke();
+    ctx.strokeStyle = w.color;
+    ctx.lineWidth = 2.4;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(38, i * 2);
+      ctx.lineTo(56, i * 8);
+      ctx.stroke();
+    }
+  } else if (weaponId === 'glaive') {
+    ctx.strokeStyle = '#c98b4b';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0);
+    ctx.lineTo(44, -4);
+    ctx.stroke();
+    ctx.strokeStyle = w.color;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(28, -10);
+    ctx.quadraticCurveTo(50, -20, 58, -2);
+    ctx.stroke();
+  } else if (weaponId === 'whip') {
+    ctx.strokeStyle = '#8b6f47';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(-6, 0);
+    ctx.quadraticCurveTo(24, -14, 52, 4);
+    ctx.stroke();
+    ctx.strokeStyle = w.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(50, 3);
+    ctx.lineTo(62, 9);
+    ctx.stroke();
+  } else if (weaponId === 'flail') {
+    ctx.strokeStyle = '#8b6f47';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-6, 0);
+    ctx.lineTo(20, -4);
+    ctx.stroke();
+    ctx.fillStyle = w.color;
+    ctx.beginPath();
+    ctx.arc(28, -6, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#15131c';
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(28 + Math.cos(a) * 9, -6 + Math.sin(a) * 9, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (weaponId === 'chainsaw') {
+    ctx.fillStyle = '#20202b';
+    ctx.fillRect(-10, -5, 22, 10);
+    ctx.strokeStyle = w.color;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(12, -5);
+    ctx.lineTo(34, -5);
+    ctx.moveTo(12, 5);
+    ctx.lineTo(34, 5);
+    ctx.stroke();
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.moveTo(12 + i * 5, -5);
+      ctx.lineTo(15 + i * 5, 5);
+      ctx.stroke();
+    }
+  } else if (weaponId === 'cutlass') {
+    ctx.strokeStyle = '#c98b4b';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-6, 2);
+    ctx.lineTo(10, 0);
+    ctx.stroke();
+    ctx.strokeStyle = w.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.quadraticCurveTo(34, -12, 44, -4);
+    ctx.stroke();
   } else {
     const len =
       weaponId === 'knife' ? 16 :

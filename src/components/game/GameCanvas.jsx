@@ -9,14 +9,28 @@ export default function GameCanvas({
   showNames = true,
   interactive = true,
   className = '',
+  paused = false,
+  captureRef,
 }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
-  const inputRef = useRef({ left: false, right: false, jump: false, attack: false, throw: false, aim: 0 });
+  const inputRef = useRef({
+    left: false,
+    right: false,
+    jump: false,
+    attack: false,
+    throw: false,
+    special: false,
+    aim: 0,
+  });
   const mouseRef = useRef({ x: 0, y: 0, has: false });
   const hudRef = useRef(onHud);
+  const pausedRef = useRef(paused);
   const [touch, setTouch] = useState(false);
+  const [isBoss, setIsBoss] = useState(false);
+  const bossRef = useRef(false);
   hudRef.current = onHud;
+  pausedRef.current = paused;
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -28,6 +42,7 @@ export default function GameCanvas({
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap || !session) return undefined;
+    if (captureRef) captureRef.current = canvas;
     const ctx = canvas.getContext('2d');
     let raf = 0;
     let last = performance.now();
@@ -54,12 +69,14 @@ export default function GameCanvas({
       if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' '].includes(k)) e.preventDefault();
       keys[k === 'spacebar' ? ' ' : k] = true;
       if (k === 'q') inputRef.current.throw = true;
+      if (k === 'e') inputRef.current.special = true;
       sync();
     };
     const onKeyUp = (e) => {
       const k = e.key.toLowerCase();
       keys[k === 'spacebar' ? ' ' : k] = false;
       if (k === 'q') inputRef.current.throw = false;
+      if (k === 'e') inputRef.current.special = false;
       sync();
     };
 
@@ -105,13 +122,18 @@ export default function GameCanvas({
       let reticle = null;
       const pre = session.scene();
       const local = pre.fighters.find((f) => f.id === localId);
+      const amBoss = !!(local && local.alive && (local.scale || 1) > 1);
+      if (amBoss !== bossRef.current) {
+        bossRef.current = amBoss;
+        setIsBoss(amBoss);
+      }
       if (interactive && local && mouseRef.current.has && canvas.width > 0) {
         const view = computeView(canvas.width, canvas.height, pre.arena);
         reticle = toWorld(mouseRef.current.x, mouseRef.current.y, view);
         inputRef.current.aim = Math.atan2(reticle.y - (local.y - 8), reticle.x - local.x);
       }
       session.setInput({ ...inputRef.current });
-      session.tick(dt);
+      if (!pausedRef.current) session.tick(dt);
 
       const scene = session.scene();
       const view = computeView(canvas.width, canvas.height, scene.arena);
@@ -142,13 +164,13 @@ export default function GameCanvas({
       canvas.removeEventListener('mousedown', onDown);
       canvas.removeEventListener('mouseleave', onLeave);
     };
-  }, [session, localId, interactive, showNames]);
+  }, [session, localId, interactive, showNames, captureRef]);
 
   return (
     <div ref={wrapRef} className={`overflow-hidden ${className}`}>
       <div className="relative h-full w-full">
         <canvas ref={canvasRef} className="block h-full w-full touch-none" />
-        {interactive && touch && <TouchControls inputRef={inputRef} />}
+        {interactive && touch && <TouchControls inputRef={inputRef} showSlam={isBoss} />}
       </div>
     </div>
   );

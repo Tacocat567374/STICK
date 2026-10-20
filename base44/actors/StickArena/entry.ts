@@ -122,6 +122,7 @@ export default class StickArena extends Actor {
             j: k.j ? 1 : 0,
             a: k.a ? 1 : 0,
             t: k.t ? 1 : 0,
+            s: k.s ? 1 : 0,
           },
           aim: Number(msg.aim) || 0,
         });

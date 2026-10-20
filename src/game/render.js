@@ -75,6 +75,70 @@ function drawSky(ctx, arena) {
   ctx.globalAlpha = 1;
 }
 
+// Interactive arena furniture: bounce pads, launch cannons, spinning hazard bars.
+function drawProps(ctx, arena, time) {
+  const props = arena.props;
+  if (!props || !props.length) return;
+  for (const p of props) {
+    if (p.type === 'bounce') {
+      ctx.fillStyle = '#15131c';
+      rrect(ctx, p.x, p.y, p.w, p.h, 8);
+      ctx.fill();
+      ctx.fillStyle = arena.glow;
+      rrect(ctx, p.x + 3, p.y + 2, p.w - 6, p.h - 10, 6);
+      ctx.fill();
+      ctx.strokeStyle = arena.glow;
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const x = p.x + 14 + i * ((p.w - 28) / 2);
+        ctx.beginPath();
+        ctx.moveTo(x, p.y + p.h - 6);
+        ctx.lineTo(x, p.y + p.h + 5);
+        ctx.stroke();
+      }
+    } else if (p.type === 'cannon') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = '#15131c';
+      ctx.fillRect(0, -11, 46, 22);
+      ctx.fillStyle = arena.accent;
+      ctx.fillRect(38, -13, 10, 26);
+      ctx.fillStyle = '#15131c';
+      ctx.beginPath();
+      ctx.arc(-4, 0, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = arena.glow;
+      ctx.beginPath();
+      ctx.arc(-4, 0, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else if (p.type === 'spinner') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((time || 0) * (p.speed || 1.8));
+      ctx.fillStyle = arena.edge;
+      rrect(ctx, -p.len, -7, p.len * 2, 14, 6);
+      ctx.fill();
+      ctx.fillStyle = '#15131c';
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(-p.len + 16 + i * ((p.len * 2 - 32) / 3), 2, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.fillStyle = '#15131c';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = arena.glow;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
 function drawPlatforms(ctx, arena) {
   for (const p of arena.platforms) {
     ctx.fillStyle = arena.block;
@@ -335,6 +399,18 @@ function drawParticles(ctx, particles) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, (1 - a) * 40 + 6, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (p.type === 'shock') {
+      const r = (1 - a) * (p.radius || 200) + 8;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 2 + a * 8;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = a * 0.4;
+      ctx.lineWidth = 2 + a * 16;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
     } else {
       ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
     }
@@ -387,6 +463,7 @@ export function drawScene(ctx, scene, view, opts = {}) {
   }
 
   drawPlatforms(ctx, arena);
+  drawProps(ctx, arena, scene.time || 0);
 
   for (const c of scene.crates) drawCrate(ctx, c);
 

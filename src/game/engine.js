@@ -3,12 +3,22 @@ import { Fighter } from './fighter';
 import { botInput } from './ai';
 import { WEAPONS, pickDrop } from './weapons';
 import { stepRagdoll } from './physics';
+import { BOT_POOL, BOT_COLORS } from './modes';
 
-const EMPTY = { left: false, right: false, jump: false, attack: false, throw: false };
+const EMPTY = { left: false, right: false, jump: false, attack: false, throw: false, special: false };
 const FIXED = 1 / 60;
 
 export class Game {
-  constructor({ arenaIndex = 0, roster = [], localId = 'p1', winsNeeded = 3, onEvent, difficulty = 'normal' } = {}) {
+  constructor({
+    arenaIndex = 0,
+    roster = [],
+    localId = 'p1',
+    winsNeeded = 3,
+    onEvent,
+    difficulty = 'normal',
+    mode = 'brawl',
+  } = {}) {
+    this.mode = mode;
     this.arenaIndex = arenaIndex;
     this.nextArena = arenaIndex;
     this.arena = getArena(arenaIndex);
@@ -42,13 +52,26 @@ export class Game {
     this.nextArena = this.arenaIndex + 1;
     this.arena = getArena(this.arenaIndex);
     this.round += 1;
+    if (this.mode === 'survival' && this.round > 1) this.growWave();
     const spawns = [...this.arena.spawns].sort(() => Math.random() - 0.5);
     const pick = this.fighters.map((_, i) => i).sort(() => Math.random() - 0.5);
     this.fighters.forEach((f, i) => {
       const s = spawns[pick[i] % spawns.length];
       f.worldWidth = this.arena.width;
+      f.lethal = this.mode === 'sudden';
       f.reset(s.x, s.y);
+      // Survival waves get spongier as they go.
+      if (this.mode === 'survival' && f.isBot) {
+        f.maxHp = 100 + (this.round - 1) * 14;
+        f.hp = f.maxHp;
+      }
     });
+    // Boss Hunt: one bot starts the round already wearing the crown.
+    if (this.mode === 'boss') {
+      const bots = this.fighters.filter((f) => f.isBot && f.alive);
+      const pool = bots.length ? bots : this.fighters;
+      pool[Math.floor(Math.random() * pool.length)].becomeBoss();
+    }
     this.bullets = [];
     this.crates = [];
     this.thrown = [];
@@ -57,6 +80,42 @@ export class Game {
     this.state = 'countdown';
     this.timer = 3;
     this.emit({ type: 'roundStart', round: this.round, arenaIndex: this.arenaIndex });
+  }
+
+  // Survival: each cleared wave drops one more bot into the arena (four max).
+  growWave() {
+    const bots = this.fighters.filter((f) => f.isBot).length;
+    if (bots >= 4) return;
+    const t = BOT_POOL[(this.round + bots) % BOT_POOL.length];
+    const spawn = this.arena.spawns[(this.round + bots) % this.arena.spawns.length];
+    this.addFighter({
+      id: `wave${this.round}_${bots}`,
+      name: t.name,
+      color: BOT_COLORS[(this.round + bots) % BOT_COLORS.length],
+      isBot: true,
+      personality: t.personality,
+      x: spawn.x,
+      y: spawn.y,
+    });
+  }
+
+  // Survival: clear the wave to advance, or lose the run when you go down.
+  resolveSurvival() {
+    const me = this.fighters.find((f) => f.id === this.localId);
+    const botsLeft = this.fighters.filter((f) => f.alive && f.isBot).length;
+    if (!me || !me.alive) {
+      this.state = 'matchover';
+      this.winner = null;
+      this.flash = 'GAME OVER';
+      this.flashT = 2;
+      this.emit({ type: 'match', winner: null });
+    } else if (botsLeft === 0) {
+      this.flash = `WAVE ${this.round} CLEAR`;
+      this.flashT = 1.6;
+      this.emit({ type: 'round', winner: me.id, wins: 0 });
+      this.state = 'roundover';
+      this.timer = 3;
+    }
   }
 
   // ---- world API used by fighters ----
@@ -72,6 +131,21 @@ export class Game {
         color: color || '#ffffff',
         size: 3 * scale,
         type: 'ring',
+      });
+      return;
+    }
+    if (type === 'shock') {
+      this.particles.push({
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        life: 0.55,
+        maxLife: 0.55,
+        color: color || '#ffffff',
+        size: 3,
+        radius: 200 * scale,
+        type: 'shock',
       });
       return;
     }
@@ -166,6 +240,7 @@ export class Game {
   addFighter({ id, name, color, isBot = false, x, y, personality = null }) {
     const f = new Fighter({ id, name, color, isBot, personality });
     f.worldWidth = this.arena.width;
+    f.lethal = this.mode === 'sudden';
     f.reset(x, y);
     f.spawnT = 1.5;
     this.fighters.push(f);
@@ -216,19 +291,23 @@ export class Game {
         this.bossCrateT = 22 + Math.random() * 8;
       }
       this.simulate(dt, false);
-      const alive = this.fighters.filter((f) => f.alive);
-      if (alive.length <= 1) {
-        const winner = alive[0] || null;
-        if (winner) winner.wins += 1;
-        this.emit({ type: 'round', winner: winner ? winner.id : null, wins: winner ? winner.wins : 0 });
-        if (winner && winner.wins >= this.winsNeeded) {
-          this.state = 'matchover';
-          this.winner = winner.id;
-          this.timer = 0;
-          this.emit({ type: 'match', winner: winner.id });
-        } else {
-          this.state = 'roundover';
-          this.timer = 3;
+      if (this.mode === 'survival') {
+        this.resolveSurvival();
+      } else {
+        const alive = this.fighters.filter((f) => f.alive);
+        if (alive.length <= 1) {
+          const winner = alive[0] || null;
+          if (winner) winner.wins += 1;
+          this.emit({ type: 'round', winner: winner ? winner.id : null, wins: winner ? winner.wins : 0 });
+          if (winner && winner.wins >= this.winsNeeded) {
+            this.state = 'matchover';
+            this.winner = winner.id;
+            this.timer = 0;
+            this.emit({ type: 'match', winner: winner.id });
+          } else {
+            this.state = 'roundover';
+            this.timer = 3;
+          }
         }
       }
     } else if (this.state === 'roundover') {
@@ -250,12 +329,64 @@ export class Game {
       else input = stored || EMPTY;
       f.update(dt, input, this);
     }
+    this.updateProps(dt);
     this.updateBullets(dt);
     this.updateCrates(dt);
     this.updateThrown(dt);
     this.updateParticles(dt);
     for (const f of this.fighters) {
       if (f.doll) stepRagdoll(f.doll, this.arena.platforms, this.arena.killY);
+    }
+  }
+
+  // Interactive arena props: bounce pads launch you, cannons fire you, spinners
+  // bat you away. None are solid, so they never disturb platform collision.
+  updateProps(dt) {
+    const props = this.arena.props;
+    if (!props || !props.length) return;
+    for (const f of this.fighters) if (f.propCd > 0) f.propCd -= dt;
+    for (const p of props) {
+      if (p.type === 'bounce') {
+        for (const f of this.fighters) {
+          if (!f.alive || f.spawnT > 0 || f.propCd > 0) continue;
+          const feet = f.y + 26;
+          if (f.x < p.x - 8 || f.x > p.x + p.w + 8) continue;
+          if (feet < p.y - 12 || feet > p.y + p.h + 16) continue;
+          f.vy = -(p.power || 1450);
+          f.onGround = false;
+          f.propCd = 0.4;
+          this.fx('dust', f.x, p.y, this.arena.glow, 1.2);
+          this.shake(5);
+        }
+      } else if (p.type === 'cannon') {
+        for (const f of this.fighters) {
+          if (!f.alive || f.spawnT > 0 || f.propCd > 0) continue;
+          if (Math.hypot(f.x - p.x, f.y - p.y) > 34) continue;
+          const power = p.power || 1350;
+          f.vx = Math.cos(p.angle) * power;
+          f.vy = Math.sin(p.angle) * power;
+          f.onGround = false;
+          f.propCd = 0.9;
+          this.fx('muzzle', p.x, p.y, this.arena.glow);
+          this.shake(7);
+        }
+      } else if (p.type === 'spinner') {
+        const ang = this.time * (p.speed || 1.8);
+        const ca = Math.cos(ang);
+        const sa = Math.sin(ang);
+        const len = p.len || 70;
+        for (const f of this.fighters) {
+          if (!f.alive || f.spawnT > 0 || f.propCd > 0) continue;
+          const dx = f.x - p.x;
+          const dy = f.y - p.y;
+          if (Math.abs(dx) > len + 24 || Math.abs(dy) > len + 24) continue;
+          if (Math.abs(-dx * sa + dy * ca) > 17) continue;
+          if (Math.abs(dx * ca + dy * sa) > len + 12) continue;
+          const s = (p.speed || 1.8) < 0 ? -1 : 1;
+          f.takeHit(p.dmg || 9, -sa * s, ca * s, 640, null, this);
+          f.propCd = 0.4;
+        }
+      }
     }
   }
 
@@ -283,7 +414,7 @@ export class Game {
             const m = Math.hypot(b.vx, b.vy) || 1;
             const owner = this.fighters.find((o) => o.id === b.owner) || null;
             f.takeHit(b.dmg, b.vx / m, b.vy / m, b.knock, owner, this);
-            gone = true;
+            if (!b.pierce) gone = true;
             break;
           }
         }
@@ -412,6 +543,7 @@ export class Game {
         this.particles.splice(i, 1);
         continue;
       }
+      if (p.type === 'shock') continue;
       p.vy += 620 * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -431,6 +563,7 @@ export class Game {
 
   scene() {
     return {
+      time: this.time,
       arena: this.arena,
       arenaIndex: this.arenaIndex,
       fighters: this.fighters,
@@ -448,6 +581,7 @@ export class Game {
       state: this.state,
       timer: Math.max(0, this.timer),
       round: this.round,
+      mode: this.mode,
       arenaName: this.arena.name,
       winsNeeded: this.winsNeeded,
       alive: this.fighters.filter((f) => f.alive).length,

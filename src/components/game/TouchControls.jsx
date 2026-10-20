@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 
 // Twin-stick touch layer: left half moves, right half aims and fires.
-export default function TouchControls({ inputRef }) {
+export default function TouchControls({ inputRef, showSlam = false }) {
   const stateRef = useRef({ move: null, aim: null });
   const [ui, setUi] = useState({ move: null, aim: null });
 
@@ -106,6 +106,24 @@ export default function TouchControls({ inputRef }) {
       >
         Throw
       </button>
+      {showSlam && (
+        <button
+          type="button"
+          className="absolute right-5 top-20 z-10 rounded-full border border-accent bg-accent/20 px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-accent active:scale-95"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            inputRef.current.special = true;
+          }}
+          onPointerUp={() => {
+            inputRef.current.special = false;
+          }}
+          onPointerCancel={() => {
+            inputRef.current.special = false;
+          }}
+        >
+          Slam
+        </button>
+      )}
     </div>
   );
 }

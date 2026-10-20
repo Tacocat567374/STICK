@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import GameCanvas from './GameCanvas';
 import Hud from './Hud';
+import ReplayOverlay from './ReplayOverlay';
 import { HostSession, GuestSession, fighterId, PALETTE } from '@/game/net';
 
 export default function OnlineRoom({ roomId, registryId, onExit }) {
@@ -19,6 +20,7 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
   const [hud, setHud] = useState(null);
   const [copied, setCopied] = useState(false);
   const [myPing, setMyPing] = useState(null);
+  const [replay, setReplay] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,13 +76,12 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
             jump: !!msg.keys.j,
             attack: !!msg.keys.a,
             throw: !!msg.keys.t,
+            special: !!msg.keys.s,
             aim: msg.aim,
           });
         }
       } else if (msg.type === 'snap') {
         if (guestRef.current) guestRef.current.onSnapshot(msg.data);
-      } else if (msg.type === 'event') {
-        if (guestRef.current) guestRef.current.onEvent(msg.data);
       } else if (msg.type === 'pong') {
         const rtt = Math.max(1, Math.round(performance.now() - msg.t));
         setMyPing(rtt);
@@ -301,7 +302,17 @@ export default function OnlineRoom({ roomId, registryId, onExit }) {
         onHud={setHud}
         className="absolute inset-0 h-full w-full"
       />
-      <Hud hud={hud} localId={fighterId(me.seat)} exitLabel="Leave room" onExit={leave} />
+      <Hud
+        hud={hud}
+        localId={fighterId(me.seat)}
+        exitLabel="Leave room"
+        onExit={leave}
+        onReplay={() => {
+          const clip = session && session.replayClip();
+          if (clip) setReplay(clip);
+        }}
+      />
+      {replay && <ReplayOverlay clip={replay} onClose={() => setReplay(null)} />}
     </div>
   );
 }

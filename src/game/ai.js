@@ -11,12 +11,15 @@ const GUN_RANGE = {
   revolver: 1100, lmg: 900, crossbow: 1400, plasma: 800,
   sniper: 2000, blunderbuss: 380, needlegun: 1200, tesla: 850,
   minigun: 700, flamethrower: 420, rocket: 1100, grenadelauncher: 900,
+  shuriken: 700, railgun: 2000, akimbo: 850, cannon: 900,
 };
 const RANK = {
-  fists: 0, dagger: 1, claws: 1, knife: 1, club: 2, bat: 2, machete: 2, nunchaku: 2,
-  hammer: 3, axe: 3, sword: 3, katana: 3, spear: 3, scythe: 3,
+  fists: 0, dagger: 1, claws: 1, knife: 1, club: 2, bat: 2, machete: 2, nunchaku: 2, whip: 2,
+  hammer: 3, axe: 3, sword: 3, katana: 3, spear: 3, scythe: 3, trident: 3, glaive: 3, flail: 3,
+  cutlass: 3, chainsaw: 3,
   pistol: 4, blunderbuss: 4, smg: 5, revolver: 5, lmg: 5, plasma: 5, needlegun: 5, tesla: 5,
   shotgun: 5, minigun: 5, flamethrower: 5, grenadelauncher: 6, crossbow: 6, rifle: 6, rocket: 6, sniper: 7,
+  shuriken: 4, akimbo: 5, cannon: 6, railgun: 7,
 };
 
 // Per-difficulty tuning: how often the bot re-decides, how much its aim wanders,
@@ -226,7 +229,15 @@ export function botInput(bot, world, dt, difficulty = 'normal') {
   if (!bot.personality) bot.personality = randomPersonality();
   const pers = PERSONALITIES[bot.personality] || PERSONALITIES.hunter;
   const profile = PROFILES[difficulty] || PROFILES.normal;
-  const input = { left: false, right: false, jump: false, attack: false, throw: false, aim: bot.aim };
+  const input = {
+    left: false,
+    right: false,
+    jump: false,
+    attack: false,
+    throw: false,
+    special: false,
+    aim: bot.aim,
+  };
   const arena = world.arena;
   const enemies = world.fighters.filter((f) => f.alive && f !== bot && f.spawnT <= 0);
   if (!enemies.length) return input;
@@ -373,6 +384,9 @@ export function botInput(bot, world, dt, difficulty = 'normal') {
       move = ahead === 0 ? -Math.sign(bot.vx) : 0;
     }
   }
+
+  // Bosses lead with the slam — it out-hits any weapon and clears the space.
+  if (bot.scale > 1 && (bot.specialCd || 0) <= 0 && dist < 230 * bot.scale) input.special = true;
 
   if (jump && bot.onGround) bot.jumpHoldT = 0.16;
   input.jump = jump || bot.jumpHoldT > 0;

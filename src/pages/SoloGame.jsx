@@ -2,37 +2,50 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GameCanvas from '@/components/game/GameCanvas';
 import Hud from '@/components/game/Hud';
+import ReplayOverlay from '@/components/game/ReplayOverlay';
 import { SoloSession, PALETTE } from '@/game/net';
-
-const BOT_TYPES = [
-  { name: 'Rex', personality: 'rusher' },
-  { name: 'Nova', personality: 'sniper' },
-  { name: 'Kilo', personality: 'brute' },
-  { name: 'Vex', personality: 'hunter' },
-  { name: 'Juno', personality: 'rusher' },
-];
+import { MODES, BOT_POOL, getMode } from '@/game/modes';
 
 export default function SoloGame() {
   const navigate = useNavigate();
+  const [mode, setMode] = useState('brawl');
   const [count, setCount] = useState(4);
   const [difficulty, setDifficulty] = useState('normal');
   const [seed, setSeed] = useState(0);
   const [started, setStarted] = useState(false);
   const [hud, setHud] = useState(null);
+  const [replay, setReplay] = useState(null);
+
+  const survival = mode === 'survival';
 
   const session = useMemo(() => {
     if (!started) return null;
+    const active = getMode(mode);
     const roster = [{ id: 'p1', name: 'You', color: PALETTE[0], isBot: false }];
-    for (let i = 1; i < count; i++) {
-      const t = BOT_TYPES[(i - 1) % BOT_TYPES.length];
-      roster.push({ id: `p${i + 1}`, name: t.name, color: PALETTE[i], isBot: true, personality: t.personality });
+    const bots = survival ? 1 : count - 1;
+    for (let i = 0; i < bots; i++) {
+      const t = BOT_POOL[i % BOT_POOL.length];
+      roster.push({
+        id: `p${i + 2}`,
+        name: t.name,
+        color: PALETTE[(i + 1) % PALETTE.length],
+        isBot: true,
+        personality: t.personality,
+      });
     }
-    return new SoloSession({ roster, localId: 'p1', arenaIndex: 0, winsNeeded: 3, difficulty });
-  }, [started, count, difficulty, seed]);
+    return new SoloSession({
+      roster,
+      localId: 'p1',
+      arenaIndex: 0,
+      winsNeeded: active.wins,
+      difficulty,
+      mode,
+    });
+  }, [started, count, difficulty, seed, mode, survival]);
 
   if (!started) {
     return (
-      <div className="flex h-[100dvh] w-full items-center justify-center bg-background px-6">
+      <div className="flex min-h-[100dvh] w-full items-center justify-center bg-background px-6 py-10">
         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-card/70 p-7 backdrop-blur-xl">
           <button
             type="button"
@@ -47,25 +60,58 @@ export default function SoloGame() {
           </p>
 
           <div className="mt-6">
-            <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
-              Fighters in the arena
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {[2, 3, 4].map((n) => (
+            <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">Game mode</div>
+            <div className="mt-2 flex flex-col gap-2">
+              {MODES.map((m) => (
                 <button
-                  key={n}
+                  key={m.id}
                   type="button"
-                  onClick={() => setCount(n)}
-                  className={`rounded-xl border px-3 py-3 font-display text-lg transition ${
-                    count === n
-                      ? 'border-primary bg-primary/15 text-primary'
-                      : 'border-white/10 bg-white/5 text-foreground hover:border-white/30'
+                  onClick={() => setMode(m.id)}
+                  className={`rounded-xl border px-4 py-3 text-left transition ${
+                    mode === m.id
+                      ? 'border-primary bg-primary/15'
+                      : 'border-white/10 bg-white/5 hover:border-white/30'
                   }`}
                 >
-                  {n}
+                  <span
+                    className={`block font-display text-sm uppercase tracking-wide ${
+                      mode === m.id ? 'text-primary' : 'text-foreground'
+                    }`}
+                  >
+                    {m.label}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{m.blurb}</span>
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="mt-5">
+            <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
+              Fighters in the arena
+            </div>
+            {survival ? (
+              <div className="mt-2 rounded-xl border border-dashed border-white/12 px-4 py-3 text-[11px] leading-snug text-muted-foreground">
+                Survival starts you against one bot and adds another every wave.
+              </div>
+            ) : (
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {[2, 3, 4].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setCount(n)}
+                    className={`rounded-xl border px-3 py-3 font-display text-lg transition ${
+                      count === n
+                        ? 'border-primary bg-primary/15 text-primary'
+                        : 'border-white/10 bg-white/5 text-foreground hover:border-white/30'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-5">
@@ -106,7 +152,7 @@ export default function SoloGame() {
           </button>
 
           <p className="mt-4 text-center text-[11px] uppercase tracking-[0.2em] text-muted-foreground/70">
-            A / D move · W jump · mouse aim · click to fight · Q throw
+            A / D move · W jump · mouse aim · click to fight · Q throw · E boss slam
           </p>
         </div>
       </div>
@@ -119,6 +165,7 @@ export default function SoloGame() {
         session={session}
         localId="p1"
         onHud={setHud}
+        paused={!!replay}
         className="absolute inset-0 h-full w-full"
       />
       <Hud
@@ -126,11 +173,17 @@ export default function SoloGame() {
         localId="p1"
         exitLabel="Quit"
         onExit={() => navigate('/')}
+        onReplay={() => {
+          const clip = session && session.replayClip();
+          if (clip) setReplay(clip);
+        }}
         onRematch={() => {
           setHud(null);
+          setReplay(null);
           setSeed((s) => s + 1);
         }}
       />
+      {replay && <ReplayOverlay clip={replay} onClose={() => setReplay(null)} />}
     </div>
   );
 }

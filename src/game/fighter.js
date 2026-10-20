@@ -116,8 +116,8 @@ export class Fighter {
     this.facing = 1;
     this.aim = 0;
     this.scale = 1;
-    this.maxHp = 100;
-    this.hp = 100;
+    this.maxHp = this.lethal ? 1 : 100;
+    this.hp = this.maxHp;
     this.alive = true;
     this.weapon = 'fists';
     this.ammo = 0;
@@ -134,6 +134,9 @@ export class Fighter {
     this.pending = [];
     this.throwCd = 0;
     this.throwLock = false;
+    this.specialCd = 0;
+    this.diving = false;
+    this.propCd = 0;
     this.wins = this.wins || 0;
     this.worldWidth = 1600;
   }
@@ -150,8 +153,28 @@ export class Fighter {
 
   becomeBoss() {
     this.scale = BOSS_SCALE;
-    this.maxHp = 180;
-    this.hp = 180;
+    this.maxHp = this.lethal ? 1 : 180;
+    this.hp = this.maxHp;
+  }
+
+  // Boss-only slam: a shockwave that mauls everyone standing too close.
+  slam(world) {
+    this.specialCd = 1.6;
+    this.attackAnim = 1;
+    world.hitstop = Math.max(world.hitstop || 0, 0.05);
+    world.fx('shock', this.x, this.y + BODY_H / 2 - 8, '#ffd166', this.scale);
+    world.shake(24);
+    const radius = 210 * this.scale;
+    for (const other of world.fighters) {
+      if (other === this || !other.alive || other.spawnT > 0) continue;
+      const dx = other.x - this.x;
+      const dy = other.y - this.y;
+      const d = Math.hypot(dx, dy);
+      if (d > radius) continue;
+      const nx = d > 1 ? dx / d : 1;
+      const ny = d > 1 ? dy / d : -0.3;
+      other.takeHit(18 * this.scale, nx, ny, 720, this, world);
+    }
   }
 
   update(dt, input, world) {
@@ -217,6 +240,22 @@ export class Fighter {
       this.jumpHold = JUMP_HOLD_TIME;
       this.jumpBuffer = 0;
       world && world.fx('dust', this.x, this.y + BODY_H / 2, this.color);
+    }
+
+    // Boss special: slam from the ground, or dive down and slam on impact.
+    this.specialCd = Math.max(0, this.specialCd - dt);
+    if (this.diving && this.onGround) {
+      this.diving = false;
+      this.slam(world);
+    } else if (input.special && this.scale > 1 && this.specialCd <= 0) {
+      if (this.onGround) {
+        this.slam(world);
+      } else {
+        this.diving = true;
+        this.specialCd = 1.6;
+        this.vy = 1500;
+        world.fx('ring', this.x, this.y, this.color, 1.4);
+      }
     }
 
     if (this.onGround && Math.abs(this.vx) > 26) this.runPhase += Math.abs(this.vx) * dt * 0.06;
@@ -361,6 +400,7 @@ export class Fighter {
         knock: w.knock,
         owner: this.id,
         color: w.color,
+        pierce: !!w.pierce,
       });
     }
     this.vx -= Math.cos(this.aim) * (w.id === 'shotgun' ? 130 : 30);

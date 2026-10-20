@@ -1,6 +1,7 @@
 import React from 'react';
 import { WEAPONS } from '@/game/weapons';
 import { PERSONALITIES } from '@/game/ai';
+import { getMode } from '@/game/modes';
 
 function pips(wins, needed, color) {
   return (
@@ -59,21 +60,30 @@ function Card({ p, needed, isLocal }) {
   );
 }
 
-export default function Hud({ hud, localId, onExit, onRematch, exitLabel = 'Leave' }) {
+export default function Hud({ hud, localId, onExit, onRematch, onReplay, exitLabel = 'Leave' }) {
   if (!hud) return null;
-  const { players = [], state, timer, round, arenaName, winsNeeded, alive, winner, flash } = hud;
+  const { players = [], state, timer, round, arenaName, winsNeeded, alive, winner, flash, mode = 'brawl' } = hud;
   const winnerPlayer = players.find((p) => p.id === winner);
+  const survival = mode === 'survival';
+  const modeName = getMode(mode).label;
+  const roundLabel = survival ? `Wave ${round}` : `Round ${round}`;
+  const roundEnded = state === 'roundover' || state === 'matchover';
 
   let banner = null;
   let sub = null;
   if (state === 'countdown') banner = Math.max(1, Math.ceil(timer));
   else if (flash) banner = flash;
   else if (state === 'roundover') {
-    banner = 'ROUND OVER';
-    sub = 'Next round in a moment';
+    banner = survival ? `WAVE ${round} CLEAR` : 'ROUND OVER';
+    sub = survival ? 'Next wave incoming' : 'Next round in a moment';
   } else if (state === 'matchover') {
-    banner = `${winnerPlayer ? winnerPlayer.name : 'Nobody'} wins`;
-    sub = 'Match complete';
+    if (survival) {
+      banner = 'GAME OVER';
+      sub = `You survived ${round} waves`;
+    } else {
+      banner = `${winnerPlayer ? winnerPlayer.name : 'Nobody'} wins`;
+      sub = 'Match complete';
+    }
   } else if (state === 'waiting') banner = 'Waiting for the host…';
 
   return (
@@ -81,7 +91,9 @@ export default function Hud({ hud, localId, onExit, onRematch, exitLabel = 'Leav
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-3 py-1 backdrop-blur-md">
-            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Round {round}</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{roundLabel}</span>
+            <span className="h-3 w-px bg-white/20" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-white/60">{modeName}</span>
             <span className="h-3 w-px bg-white/20" />
             <span className="text-[11px] font-semibold uppercase tracking-widest text-white/60">{arenaName}</span>
             <span className="h-3 w-px bg-white/20" />
@@ -114,14 +126,27 @@ export default function Hud({ hud, localId, onExit, onRematch, exitLabel = 'Leav
             {banner}
           </div>
           {sub && <div className="text-xs font-semibold uppercase tracking-[0.3em] text-white/70">{sub}</div>}
-          {state === 'matchover' && onRematch && (
-            <button
-              type="button"
-              onClick={onRematch}
-              className="pointer-events-auto mt-3 rounded-full bg-primary px-6 py-2.5 text-sm font-bold uppercase tracking-widest text-primary-foreground transition hover:brightness-110"
-            >
-              Rematch
-            </button>
+          {((onReplay && roundEnded) || (state === 'matchover' && onRematch)) && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              {onReplay && roundEnded && (
+                <button
+                  type="button"
+                  onClick={onReplay}
+                  className="pointer-events-auto rounded-full border border-white/25 bg-black/50 px-6 py-2.5 text-sm font-bold uppercase tracking-widest text-white backdrop-blur-md transition hover:border-white/60"
+                >
+                  Watch replay
+                </button>
+              )}
+              {state === 'matchover' && onRematch && (
+                <button
+                  type="button"
+                  onClick={onRematch}
+                  className="pointer-events-auto rounded-full bg-primary px-6 py-2.5 text-sm font-bold uppercase tracking-widest text-primary-foreground transition hover:brightness-110"
+                >
+                  Rematch
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
